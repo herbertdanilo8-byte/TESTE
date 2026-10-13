@@ -49,11 +49,11 @@ dialog{border:0;border-radius:14px;padding:20px;max-width:560px;width:94%;backgr
 <aside id="side"><div class="logo">🧠 <b>Segunda Mente</b></div>
 <nav><button class="on" data-sa="navsummary" data-sec="summary">📈 Resumo</button><button data-act="nav" data-sec="home">🏦 Bancos e Contas</button><button data-sa="navsheets" data-sec="sheets">📊 Planilhas</button><button data-sa="navgoals" data-sec="goals">🎯 Objetivos</button><button data-sa="navhabits" data-sec="habits">✅ Hábitos</button>
 </nav></aside>
-<div id="wrap"><header><button id="menuBtn" data-act="menu">☰</button><span class="muted">Registro manual · sem integração bancária</span><span class="bar"><button data-act="hide" id="hideBtn">👁 Ocultar valores</button><button id="logoutBtn" hidden>Sair</button></span></header><main id="main"></main></div>
-<div id="login" hidden><div class="card"><h2>🧠 Segunda Mente</h2><p class="muted">Entre para acessar seus dados em qualquer aparelho.</p>
-<label>E-mail<input id="lmail" type="email" autocomplete="email"></label><label>Senha<input id="lpass" type="password" autocomplete="current-password"></label>
+<div id="wrap"><header><button id="menuBtn" data-act="menu">☰</button><span class="muted">Registro manual · sem integração bancária</span><span class="bar"><button data-act="hide" id="hideBtn">👁 Ocultar valores</button><button id="adminBtn" hidden>👑 Admin</button><button id="logoutBtn" hidden>Sair</button></span></header><main id="main"></main></div>
+<div id="login" hidden><div class="card"><h2>🧠 Segunda Mente</h2><p class="muted">Entre ou crie sua conta. Novos cadastros precisam ser aprovados pelo administrador.</p>
+<div id="lextra" hidden><label>Nome<input id="lname" autocomplete="name"></label><label>CPF ou CNPJ<input id="ldoc" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="18"></label><label>Telefone / WhatsApp<input id="ltel" type="tel" autocomplete="tel"></label></div><label>E-mail<input id="lmail" type="email" autocomplete="email"></label><label>Senha<input id="lpass" type="password" autocomplete="current-password"></label>
 <div class="bar"><button class="pri" id="lin">Entrar</button><button id="lnew">Criar conta</button></div>
-<p><a href="#" id="lreset" class="muted">Esqueci minha senha</a></p><div id="lerr"></div></div></div>
+<p><a href="#" id="lreset" class="muted">Esqueci minha senha</a> <a href="#" id="lback" class="muted" hidden>← Já tenho conta</a></p><div id="lerr"></div></div></div>
 <dialog id="dlg"></dialog><div id="toast"></div><div id="fab"><div class="mn"><button class="fi" data-fab="in">＋ Receita</button><button class="fo" data-fab="out">− Despesa</button></div><button class="main" data-fab="t" aria-label="Adicionar receita ou despesa">+</button></div><script type="module">
 const brl=v=>(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const dt=s=>s?s.split('-').reverse().join('/'):'—';
@@ -232,6 +232,10 @@ return{TYPES,ty,isNum,rd2,uid,mkCol,tpl,TEMPLATES,parse,validate,renameRefs,eval
 // Enquanto apiKey começar com "COLE", o app continua funcionando só com localStorage.
 const FIREBASE_CONFIG={apiKey:"AIzaSyDMLK6Tx686QDAEdRRCQIMhFHWI0MYJQqo",authDomain:"segunda-mente-30ea0.firebaseapp.com",projectId:"segunda-mente-30ea0",storageBucket:"segunda-mente-30ea0.firebasestorage.app",messagingSenderId:"118145916353",appId:"1:118145916353:web:4c391cf87e2ff0a921e340"};
 const FB=typeof firebase!=='undefined'&&!!FIREBASE_CONFIG.apiKey&&!FIREBASE_CONFIG.apiKey.startsWith('COLE');
+// E-mail do ADMINISTRADOR (você). Troque pelo seu e-mail de login e use o MESMO e-mail nas regras do Firestore (arquivo firestore.rules).
+const ADMIN_EMAIL='herbertdanilo8@gmail.com';
+const ADMIN_ON=!ADMIN_EMAIL.startsWith('COLE');let IS_ADMIN=false;
+const isAdminUser=u=>ADMIN_ON&&!!u.email&&u.email.toLowerCase()===ADMIN_EMAIL.toLowerCase();
 let fsdb=null,fauth=null;
 if(FB){firebase.initializeApp(FIREBASE_CONFIG);fsdb=firebase.firestore();fauth=firebase.auth()}
 const K=u=>`segundamente:${u}`;
@@ -245,17 +249,18 @@ const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>re
 const store=FB?{
  locked:false,
  ref:u=>fsdb.collection('users').doc(u),
+ rep(u,sz){if(this.szU===u&&Math.abs(sz-(this.szLast||0))<=5000)return;this.szU=u;this.szLast=sz;fsdb.collection('profiles').doc(u).update({size:sz}).catch(()=>{})},
  async load(u){
   const s=await withTimeout(this.ref(u).get(),15000); // se falhar, lança erro: nunca devolve "vazio" para não apagar a nuvem
-  if(s.exists&&s.data().json)return JSON.parse(s.data().json);
-  const old=lsGet('usuario-local'); // migração: dados que já estavam neste navegador
+  if(s.exists&&s.data().json){this.rep(u,new Blob([s.data().json]).size);return JSON.parse(s.data().json)}
+  const old=(IS_ADMIN&&!VIEWAS)||!ADMIN_ON?lsGet('usuario-local'):null; // migração: dados que já estavam neste navegador
   if(old){await this.save(u,old);toast('Seus dados deste navegador foram enviados para o Firebase.');return old}
   return emptyData()},
  async save(u,d){
-  if(this.locked)return false;
+  if(this.locked||!d)return false;
   const j=JSON.stringify(d);lsSet(u,d); // cópia local de segurança
   if(j.length>900000)toast('Atenção: seus dados estão perto do limite de 1 MB do documento.',1);
-  try{await withTimeout(this.ref(u).set({json:j,updatedAt:firebase.firestore.FieldValue.serverTimestamp()}),15000);return true}catch(e){console.error(e);return false}}
+  try{await withTimeout(this.ref(u).set({json:j,updatedAt:firebase.firestore.FieldValue.serverTimestamp()}),15000);this.rep(u,new Blob([j]).size);return true}catch(e){console.error(e);return false}}
 }:{
  async load(u){try{const d=lsGet(u);if(d)return d}catch(e){}return emptyData()},
  async save(u,d){return lsSet(u,d)}};
@@ -1015,18 +1020,137 @@ async function boot(){
  try{S=await store.load(UID)}catch(e){console.error(e);if(store.locked!==undefined)store.locked=true;
   $('#main').innerHTML='<div class="card"><h3>Não foi possível carregar seus dados</h3><p class="muted">Verifique a internet. Nada foi alterado na nuvem.</p><button class="pri" onclick="location.reload()">Tentar de novo</button></div>';return}
  for(const k of ['cardTx','cardCredits','cardPays','cardLimits','log','sheets','notes','goals','habits','quick'])S[k]??=[];S.cardCats??=[...CARDCATS];view={name:'summary'};render();habStart()}
+// ===== ADMIN / SAAS =====
+const fmtD=ms=>ms?new Date(ms).toLocaleDateString('pt-BR'):'sem vencimento';
+const onlyD=v=>(v||'').replace(/\D/g,'');
+const fmtDoc=v=>{const d=onlyD(v);if(d.length<=11)return d.replace(/(\d{3})(\d{0,3})(\d{0,3})(\d{0,2}).*/,(m,a,b,c,e)=>a+(b?'.'+b:'')+(c?'.'+c:'')+(e?'-'+e:''));return d.slice(0,14).replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2})/,(m,a,b,c,e,f)=>a+'.'+b+'.'+c+'/'+e+(f?'-'+f:''))};
+const validDoc=v=>{const d=onlyD(v);if(/^(\d)\1+$/.test(d))return false;
+ if(d.length===11){const c=n=>{let t=0;for(let i=0;i<n;i++)t+=+d[i]*(n+1-i);const r=t*10%11;return r===10?0:r};return c(9)===+d[9]&&c(10)===+d[10]}
+ if(d.length===14){const c=n=>{let t=0,w=n-7;for(let i=0;i<n;i++){t+=+d[i]*w--;if(w<2)w=9}const r=t%11;return r<2?0:11-r};return c(12)===+d[12]&&c(13)===+d[13]}
+ return false};
+const dateMs=v=>v?new Date(v+'T23:59:59').getTime():0;
+async function gate(u){ // devolve texto de erro se a pessoa NÃO pode entrar
+ IS_ADMIN=isAdminUser(u);$('#adminBtn').hidden=!IS_ADMIN;
+ if(IS_ADMIN||!ADMIN_ON)return null;
+ let p;try{p=await withTimeout(fsdb.collection('profiles').doc(u.uid).get(),15000)}catch(e){console.error(e);return 'Não foi possível verificar seu acesso. Confira a internet e tente de novo.'}
+ if(!p.exists)return 'Sua conta ainda não foi liberada. Fale com o administrador.';
+ const d=p.data();
+
+ if(d.status==='pending')return 'Seu cadastro está aguardando a aprovação do administrador.';
+ if(d.status!=='active')return 'Seu acesso está bloqueado. Fale com o administrador.';
+ if(d.expiresAt&&d.expiresAt<Date.now())return 'Seu acesso expirou em '+fmtD(d.expiresAt)+'. Fale com o administrador.';
+ fsdb.collection('profiles').doc(u.uid).update({lastLogin:Date.now()}).catch(()=>{});
+ return null}
+let ADM=[],VIEWAS=null,admQ='',admF='';
+const PLANS=['Gratuito','Teste','Mensal','Trimestral','Anual','Vitalício'];
+const stOf=p=>p.status==='pending'?'pen':p.status!=='active'?'blk':(p.expiresAt&&p.expiresAt<Date.now()?'exp':'ok');
+const LIM=1048576,fmtB=n=>n<1024?n+' B':n<LIM?(n/1024).toFixed(0)+' KB':(n/LIM).toFixed(2)+' MB',pctOf=p=>p.size==null?null:Math.min(100,p.size/LIM*100);
+const STL={pen:'🟡 Pendente',ok:'🟢 Ativo',exp:'🟠 Vencido',blk:'🔴 Bloqueado'};
+const admRef=id=>fsdb.collection('profiles').doc(id);
+const ymd=ms=>{const t=new Date(ms);return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0')};
+async function admLeave(){if(!VIEWAS)return;try{localStorage.removeItem(K(UID))}catch(e){}VIEWAS=null;S=null;UID=fauth.currentUser.uid;const b=$('#viewBar');if(b)b.hidden=true;document.body.style.paddingTop=''}
+async function admClose(){const pg=$('#admPage');pg.hidden=true;if(!S){UID=fauth.currentUser.uid;await boot()}}
+async function adminOpen(){
+ await admLeave();
+ let pg=$('#admPage');
+ if(!pg){pg=document.createElement('div');pg.id='admPage';pg.style.cssText='position:fixed;inset:0;z-index:50;overflow:auto;background:var(--bg);color:var(--t);padding:max(16px,env(safe-area-inset-top)) 16px 40px';document.body.appendChild(pg)}
+ pg.hidden=false;pg.innerHTML='<p class="muted">Carregando…</p>';
+ try{ADM=(await withTimeout(fsdb.collection('profiles').get(),15000)).docs.map(x=>({id:x.id,...x.data()}))}
+ catch(e){console.error(e);pg.innerHTML='<div class="card"><h3>👑 Painel do administrador</h3><p class="muted">Não consegui ler os cadastros. Confira se as regras do Firestore foram publicadas.</p><button id="admClose">Fechar</button></div>';$('#admClose').onclick=admClose;return}
+ admRender()}
+function admRender(){
+ const pg=$('#admPage'),now=Date.now(),c={pen:0,ok:0,exp:0,blk:0};ADM.forEach(p=>c[stOf(p)]++);
+ const soon=ADM.filter(p=>stOf(p)==='ok'&&p.expiresAt&&p.expiresAt<now+7*864e5).length;
+ const kpi=(t,v,f)=>`<button class="kpi" data-f="${f}" style="text-align:left"><small class="muted">${t}</small><div style="font-size:22px;font-weight:700">${v}</div></button>`;
+ pg.innerHTML=`<div style="max-width:1000px;margin:0 auto">
+ <div class="bar" style="justify-content:space-between;margin-bottom:12px"><h2 style="margin:0">👑 Painel do administrador</h2><span class="bar"><button class="pri" id="admNew">+ Nova pessoa</button><button id="admRef">↻ Atualizar</button><button id="admClose">Fechar</button></span></div>
+ <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px">${kpi('Total',ADM.length,'')}${kpi('Pendentes',c.pen,'pen')}${kpi('Ativos',c.ok,'ok')}${kpi('Vencidos',c.exp,'exp')}${kpi('Bloqueados',c.blk,'blk')}<div class="kpi"><small class="muted">Vencem em 7 dias</small><div style="font-size:22px;font-weight:700">${soon}</div></div><div class="kpi"><small class="muted">Dados acima de 70%</small><div style="font-size:22px;font-weight:700">${ADM.filter(p=>(pctOf(p)||0)>=70).length}</div></div></div>
+ <div class="bar" style="margin-bottom:10px"><input id="admQ" placeholder="🔎 Buscar por nome, e-mail, telefone, plano ou anotação" style="flex:1;min-width:200px" value="${esc(admQ)}"><select id="admFS" style="width:auto"><option value="">Todos</option><option value="pen">Pendentes</option><option value="ok">Ativos</option><option value="exp">Vencidos</option><option value="blk">Bloqueados</option></select></div>
+ <div class="wrap" id="admList"></div>
+ <p class="muted"><small>"Abrir dados" abre o app com os dados da pessoa para você ver e editar tudo. Use com responsabilidade e avise seus clientes nos termos de uso.</small></p></div>`;
+ $('#admFS').value=admF;
+ $('#admClose').onclick=admClose;$('#admRef').onclick=adminOpen;$('#admNew').onclick=()=>admForm(null);
+ $('#admQ').oninput=e=>{admQ=e.target.value;admList()};$('#admFS').onchange=e=>{admF=e.target.value;admList()};
+ pg.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{admF=b.dataset.f;$('#admFS').value=admF;admList()});
+ admList()}
+function admList(){
+ const qq=admQ.toLowerCase(),list=ADM.filter(p=>(!admF||stOf(p)===admF)&&(!qq||[p.name,p.email,p.phone,p.doc,fmtDoc(p.doc),p.plan,p.notes].join(' ').toLowerCase().includes(qq))).sort((a,b)=>((stOf(b)==='pen')-(stOf(a)==='pen'))||(a.name||a.email||'').localeCompare(b.name||b.email||''));
+ const el=$('#admList');
+ el.innerHTML=list.length?`<table><tr><th>Pessoa</th><th>Plano</th><th>Status</th><th>Último acesso</th><th>Dados</th><th>Ações</th></tr>${list.map(p=>`<tr><td><b>${esc(p.name||'—')}</b><br><small>${esc(p.email)}</small>${p.doc?`<br><small>🪪 ${esc(fmtDoc(p.doc))}</small>`:''}${p.phone?`<br><small>📞 ${esc(p.phone)}</small>`:''}${p.notes?`<br><small class="muted">📝 ${esc(p.notes)}</small>`:''}</td><td>${esc(p.plan||'—')}</td><td>${STL[stOf(p)]}<br><small>${fmtD(p.expiresAt)}</small></td><td><small>${p.lastLogin?new Date(p.lastLogin).toLocaleString('pt-BR'):'nunca entrou'}</small></td><td style="min-width:110px">${(()=>{const q=pctOf(p);if(q==null)return '<small class="muted">—</small>';const col=q>=90?'var(--r)':q>=70?'#d97706':'var(--g)';return `<div class="gbar" style="margin:0 0 4px"><i style="width:${q}%;background:${col}"></i></div><small>${fmtB(p.size)} · ${q.toFixed(0)}%</small>`})()}</td><td><button class="pri" data-ad="view" data-id="${p.id}">Abrir dados</button> <button data-ad="edit" data-id="${p.id}">Editar</button> <button data-ad="tog" data-id="${p.id}">${p.status==='active'?'Bloquear':p.status==='pending'?'✔ Aprovar':'Liberar'}</button> <button data-ad="rst" data-id="${p.id}">Senha</button> <button data-ad="del" data-id="${p.id}">🗑</button></td></tr>`).join('')}</table>`:'<p class="muted">Nenhuma conta encontrada.</p>';
+ el.querySelectorAll('[data-ad]').forEach(b=>b.onclick=async()=>{
+  const p=ADM.find(x=>x.id===b.dataset.id),k=b.dataset.ad;
+  try{
+   if(k==='view')return admView(p);
+   if(k==='edit')return admForm(p);
+   if(k==='tog')await admRef(p.id).update({status:p.status==='active'?'blocked':'active'}); // pendente/bloqueado -> ativo
+   else if(k==='rst'){await fauth.sendPasswordResetEmail(p.email);return toast('Link de redefinição enviado para '+p.email)}
+   else if(k==='del'){if(!confirm('Remover '+p.email+'? O acesso é cortado e os dados dela são apagados.'))return;await fsdb.collection('users').doc(p.id).delete().catch(()=>{});await admRef(p.id).delete()}
+   adminOpen()}catch(e){console.error(e);toast('Erro: '+(e.code||e.message),1)}})}
+function admForm(p){
+ const n=!p,d=$('#dlg'),x=p||{status:'active',expiresAt:0,plan:'Mensal'};
+ d.innerHTML=`<div><h3>${n?'Nova pessoa':'Editar: '+esc(x.name||x.email)}</h3>
+ <label>Nome<input id="fName" value="${esc(x.name||'')}"></label>
+ <label>E-mail<input id="fMail" type="email" autocomplete="off" value="${esc(x.email||'')}" ${n?'':'disabled'}></label>
+ ${n?'<label>Senha inicial (mín. 6)<input id="fPass" type="text" autocomplete="off"></label>':''}
+ <label>CPF / CNPJ<input id="fDoc" inputmode="numeric" maxlength="18" value="${esc(fmtDoc(x.doc))}"></label>
+ <label>Telefone / WhatsApp<input id="fTel" value="${esc(x.phone||'')}"></label>
+ <label>Plano<select id="fPlan">${PLANS.map(o=>`<option ${x.plan===o?'selected':''}>${o}</option>`).join('')}</select></label>
+ <label>Status<select id="fSt"><option value="active" ${x.status==='active'?'selected':''}>Ativo</option><option value="pending" ${x.status==='pending'?'selected':''}>Pendente</option><option value="blocked" ${x.status==='blocked'?'selected':''}>Bloqueado</option></select></label>
+ <label>Vencimento<input id="fExp" type="date" value="${x.expiresAt?ymd(x.expiresAt):''}"></label>
+ <div class="bar" style="margin:6px 0"><button id="q30">+30 dias</button><button id="q365">+1 ano</button><button id="q0">Sem vencimento</button></div>
+ <label>Anotações (só você vê)<textarea id="fNote" rows="3">${esc(x.notes||'')}</textarea></label>
+ <div class="bar"><button class="pri" id="fSave">Salvar</button><button id="fCancel">Cancelar</button></div><div id="fMsg" class="muted"></div></div>`;
+ if(!d.open)d.showModal();
+ const add=days=>{const base=Math.max(Date.now(),dateMs($('#fExp').value)||0);$('#fExp').value=ymd(base+days*864e5)};
+ $('#fDoc').oninput=e=>{e.target.value=fmtDoc(e.target.value)};$('#q30').onclick=()=>add(30);$('#q365').onclick=()=>add(365);$('#q0').onclick=()=>$('#fExp').value='';$('#fCancel').onclick=()=>d.close();
+ $('#fSave').onclick=async()=>{
+  const data={name:$('#fName').value.trim(),doc:onlyD($('#fDoc').value),phone:$('#fTel').value.trim(),plan:$('#fPlan').value,status:$('#fSt').value,expiresAt:dateMs($('#fExp').value),notes:$('#fNote').value.trim()},m=$('#fMsg'),btn=$('#fSave');
+  if(data.doc&&!validDoc(data.doc)){m.textContent='CPF ou CNPJ inválido.';return}
+  btn.disabled=true;m.textContent='Salvando…';
+  try{
+   if(n){const email=$('#fMail').value.trim().toLowerCase(),pass=$('#fPass').value;
+    if(!email||pass.length<6){m.textContent='Informe o e-mail e uma senha com pelo menos 6 caracteres.';btn.disabled=false;return}
+    let a2;try{a2=firebase.app('sec')}catch(e){a2=firebase.initializeApp(FIREBASE_CONFIG,'sec')} // 2º app: não desloga você
+    const c=await a2.auth().createUserWithEmailAndPassword(email,pass);await a2.auth().signOut();
+    await admRef(c.user.uid).set({...data,email,createdAt:Date.now(),lastLogin:0});toast('Conta criada: '+email)}
+   else await admRef(p.id).update(data);
+   d.close();adminOpen()
+  }catch(e){console.error(e);m.textContent=e.code==='auth/email-already-in-use'?'Esse e-mail já tem login no Firebase. Apague-o em Authentication > Usuários no console e cadastre de novo.':(AUTHERR[e.code]||'Erro: '+(e.code||e.message));btn.disabled=false}}}
+async function admView(p){ // abre o app com os dados da pessoa (você edita direto na conta dela)
+ $('#admPage').hidden=true;VIEWAS=p;UID=p.id;S=null;
+ let b=$('#viewBar');
+ if(!b){b=document.createElement('div');b.id='viewBar';b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:60;background:#b45309;color:#fff;display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 12px';document.body.appendChild(b)}
+ b.innerHTML=`<span>✏️ Editando a conta de <b>${esc(p.name||p.email)}</b></span><button id="viewBack">← Voltar ao painel</button>`;b.hidden=false;
+ document.body.style.paddingTop='44px';$('#viewBack').onclick=adminOpen;
+ store.locked=false;await boot()}
 const AUTHERR={'auth/invalid-credential':'E-mail ou senha incorretos.','auth/wrong-password':'E-mail ou senha incorretos.','auth/user-not-found':'E-mail ou senha incorretos.','auth/invalid-email':'E-mail inválido.','auth/email-already-in-use':'Este e-mail já tem conta. Use "Entrar".','auth/weak-password':'Senha fraca: use pelo menos 6 caracteres.','auth/too-many-requests':'Muitas tentativas. Aguarde um pouco.','auth/network-request-failed':'Sem conexão com a internet.','auth/operation-not-allowed':'Ative "E-mail/senha" em Authentication no Firebase.'};
 if(FB){
  const L=$('#login'),err=m=>$('#lerr').textContent=m||'',cred=()=>[$('#lmail').value.trim(),$('#lpass').value];
  const run=async f=>{err();try{await f()}catch(e){err(AUTHERR[e.code]||'Erro: '+(e.code||e.message))}};
  $('#lin').onclick=()=>run(()=>fauth.signInWithEmailAndPassword(...cred()));
- $('#lnew').onclick=()=>run(()=>fauth.createUserWithEmailAndPassword(...cred()));
+ let SIGNUP=false,signMode=false;
+ const mode=on=>{signMode=on;$('#lextra').hidden=!on;$('#lin').hidden=on;$('#lback').hidden=!on;$('#lreset').hidden=on;$('#lnew').textContent=on?'Cadastrar':'Criar conta';$('#lnew').className=on?'pri':'';err()};
+ $('#ldoc').oninput=e=>{e.target.value=fmtDoc(e.target.value)};
+ $('#lback').onclick=e=>{e.preventDefault();mode(false)};
+ $('#lnew').onclick=()=>{
+  if(!signMode)return mode(true);
+  const name=$('#lname').value.trim(),phone=$('#ltel').value.trim(),doc=onlyD($('#ldoc').value),[email,pass]=cred();
+  if(!name)return err('Informe seu nome.');if(!validDoc(doc))return err('CPF ou CNPJ inválido. Confira os números.');if(!email)return err('Informe seu e-mail.');if(pass.length<6)return err('Senha fraca: use pelo menos 6 caracteres.');
+  run(async()=>{SIGNUP=true;$('#lnew').disabled=true;
+   try{const c=await fauth.createUserWithEmailAndPassword(email,pass);
+    await fsdb.collection('profiles').doc(c.user.uid).set({name,phone,doc,email:email.toLowerCase(),status:'pending',plan:'Gratuito',expiresAt:0,notes:'',createdAt:Date.now(),lastLogin:0});
+    await fauth.signOut();mode(false);$('#lpass').value='';
+    $('#lerr').innerHTML='<span style="color:var(--g)">Cadastro enviado! Aguarde a aprovação do administrador para entrar.</span>'}
+   finally{SIGNUP=false;$('#lnew').disabled=false}})};
  $('#lpass').addEventListener('keydown',e=>{if(e.key==='Enter')$('#lin').click()});
  $('#lreset').onclick=e=>{e.preventDefault();const m=$('#lmail').value.trim();if(!m)return err('Digite seu e-mail acima.');run(async()=>{await fauth.sendPasswordResetEmail(m);toast('Enviamos um link para redefinir a senha.')})};
  $('#logoutBtn').hidden=false;
  $('#logoutBtn').onclick=async()=>{try{localStorage.removeItem(K(UID))}catch(e){}await fauth.signOut()};
+ $('#adminBtn').onclick=adminOpen;
  fauth.onAuthStateChanged(async u=>{
-  if(!u){S=null;$('#lpass').value='';L.hidden=false;return}
+  if(!u){S=null;IS_ADMIN=false;$('#adminBtn').hidden=true;$('#lpass').value='';L.hidden=false;return}
+  if(SIGNUP)return;
+  const bad=await gate(u);if(bad){await fauth.signOut();err(bad);return}
   UID=u.uid;store.locked=false;L.hidden=true;await boot()});
 }else await boot();
 
