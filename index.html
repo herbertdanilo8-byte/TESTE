@@ -740,7 +740,7 @@ function goalCard(g){const col=g.color||'#4f46e5',ic=g.icon||'🎯',pct=g.target
  else if(!g.deadline){badge='<span class="badge muted">Sem prazo</span>';info=`Faltam ${money(left)}`}
  else{const d=gDays(g.deadline);if(d<0){badge='<span class="badge neg">Atrasado</span>';info=`Prazo vencido há ${-d} dia(s) · faltam ${money(left)}`}
   else{badge='<span class="badge" style="color:var(--p)">No prazo</span>';info=`Faltam ${money(left)} · ${d===0?'vence hoje':d+' dia(s)'}<br><b>Guarde ≈ ${money(gNeed(g))}/mês</b> para chegar a tempo`}}
- return `<article class="card" style="border-top:4px solid ${esc(col)}"><div class="row"><div class="who"><span class="ico" style="width:40px;height:40px;font-size:20px;background:${esc(col)}22">${ic}</span><div><h3>${esc(g.name)}</h3><small>${g.deadline?'Meta até '+GD(g.deadline):'Sem data limite'}</small></div></div><details class="menu"><summary>⋯</summary><button data-sa="goaledit" data-id="${g.id}">Editar</button><button data-sa="goalhist" data-id="${g.id}">Histórico</button><button data-sa="goaldel" data-id="${g.id}">Excluir</button></details></div>
+ return `<article class="card" style="border-top:4px solid ${esc(col)}"><div class="row"><div class="who"><span class="ico" style="width:40px;height:40px;font-size:20px;background:${esc(col)}22">${ic}</span><div><h3>${esc(g.name)}</h3><small>${g.kind==='divida'?'💳 Dívida · ':'🌱 Meta de futuro · '}${g.deadline?'até '+GD(g.deadline):'sem data limite'}</small></div></div><details class="menu"><summary>⋯</summary><button data-sa="goaledit" data-id="${g.id}">Editar</button><button data-sa="goalhist" data-id="${g.id}">Histórico</button><button data-sa="goaldel" data-id="${g.id}">Excluir</button></details></div>
  <div class="row" style="margin:14px 0"><div><strong class="big" style="margin:0">${money(g.saved)}</strong><small>de ${money(g.target)}</small><div style="margin-top:6px">${badge}</div></div><div class="ring" style="--pc:${pct.toFixed(1)};--gc:${esc(col)}"><span>${Math.floor(pct)}%</span></div></div>
  <p class="muted" style="margin:0 0 10px">${info}</p><div class="bar"><button class="in" data-sa="goaldep" data-id="${g.id}">+ Depositar</button><button class="out" data-sa="goalwd" data-id="${g.id}" ${g.saved>0?'':'disabled'}>− Retirar</button></div></article>`}
 function goalAct(a,b){if(a==='navgoals'){view={name:'goals'};return render()}
@@ -750,6 +750,7 @@ function goalAct(a,b){if(a==='navgoals'){view={name:'goals'};return render()}
  if(a==='goalnew'||a==='goaledit'){const e=a==='goaledit'&&g;if(a==='goaledit'&&!g)return;const ci=e?g.icon||'🎯':'🎯',cc=e?g.color||GCOLORS[0]:GCOLORS[0];
   dlg.innerHTML=`<form data-sa="goalform" data-id="${e?g.id:''}"><h2>${e?'Editar objetivo':'Novo objetivo'}</h2><label>Nome do objetivo*<input name="name" required maxlength="60" placeholder="Ex.: Reserva de emergência" value="${e?esc(g.name):''}"></label>
   <div class="two"><label>Valor da meta (R$)*<input name="target" type="number" min="0.01" step="0.01" required value="${e?g.target:''}"></label>${e?'':'<label>Já tenho guardado (R$)<input name="saved" type="number" min="0" step="0.01" value="0"></label>'}</div>
+  <label>Tipo<select name="kind"><option value="futuro" ${!e||g.kind!=='divida'?'selected':''}>🌱 Meta de futuro (guardar para algo)</option><option value="divida" ${e&&g.kind==='divida'?'selected':''}>💳 Dívida (pagar o que devo)</option></select></label>
   <label>Data limite (opcional)<input name="deadline" type="date" value="${e?esc(g.deadline||''):''}"></label>
   <label>Ícone</label><div class="pick">${GICONS.map(x=>`<label><input type="radio" name="icon" value="${x}" ${x===ci?'checked':''}><span>${x}</span></label>`).join('')}</div>
   <label>Cor</label><div class="pick">${GCOLORS.map(x=>`<label><input type="radio" name="color" value="${x}" ${x===cc?'checked':''}><span style="background:${x}"></span></label>`).join('')}</div>${actions}</form>`;return dlg.showModal()}
@@ -759,11 +760,11 @@ function goalAct(a,b){if(a==='navgoals'){view={name:'goals'};return render()}
   <label>Observação (opcional)<input name="note" maxlength="80"></label>${actions}</form>`;return dlg.showModal()}
  if(a==='goalhist'){const m=[...(g.moves||[])].reverse();dlg.innerHTML=`<h2>Histórico: ${esc(g.name)}</h2>${m.length?`<div class="wrap"><table><tr><th>Data</th><th>Observação</th><th>Valor</th></tr>${m.map(x=>`<tr><td>${dnl(x.at)}</td><td>${esc(x.note||'')}</td><td class="${x.amount>=0?'in':'out'}">${x.amount>=0?'+':'−'}${money(Math.abs(x.amount))}</td></tr>`).join('')}</table></div>`:'<p class="muted">Nenhuma movimentação ainda.</p>'}<div class="bar" style="margin-top:12px"><button type="button" data-act="close">Fechar</button></div>`;return dlg.showModal()}
  if(a==='goaldel'){if(!confirm(`Excluir o objetivo "${g.name}"? Isso não pode ser desfeito.`))return;S.goals=S.goals.filter(x=>x.id!==g.id);render();toast('Objetivo excluído.');return persist()}}
-async function goalSave(f){const fd=new FormData(f),name=(fd.get('name')||'').trim(),target=+fd.get('target'),deadline=fd.get('deadline')||'',id=f.dataset.id,icon=fd.get('icon')||'🎯',color=fd.get('color')||GCOLORS[0];
+async function goalSave(f){const fd=new FormData(f),name=(fd.get('name')||'').trim(),target=+fd.get('target'),deadline=fd.get('deadline')||'',id=f.dataset.id,icon=fd.get('icon')||'🎯',color=fd.get('color')||GCOLORS[0],kind=fd.get('kind')==='divida'?'divida':'futuro';
  if(!name)return toast('Dê um nome ao objetivo.',1);if(!(target>0))return toast('Informe um valor de meta maior que zero.',1);
  const L=(S.goals??=[]);
- if(id){const g=L.find(x=>x.id===id);if(!g)return;Object.assign(g,{name,target,deadline,icon,color})}
- else{const sv=Math.max(0,+fd.get('saved')||0);L.push({id:SH.uid(),name,target,saved:sv,deadline,icon,color,createdAt:nowIso(),moves:sv?[{at:nowIso(),amount:sv,note:'Saldo inicial'}]:[]})}
+ if(id){const g=L.find(x=>x.id===id);if(!g)return;Object.assign(g,{name,target,deadline,icon,color,kind})}
+ else{const sv=Math.max(0,+fd.get('saved')||0);L.push({id:SH.uid(),name,target,saved:sv,deadline,icon,color,kind,createdAt:nowIso(),moves:sv?[{at:nowIso(),amount:sv,note:'Saldo inicial'}]:[]})}
  $('#dlg').close();render();toast('Objetivo salvo.');await persist()}
 async function goalMov(f){const g=(S.goals??=[]).find(x=>x.id===f.dataset.id),fd=new FormData(f),v=Math.round(+fd.get('amount')*100)/100,dep=f.dataset.k==='dep';
  if(!g)return;if(!(v>0))return toast('Informe um valor maior que zero.',1);if(!dep&&v>g.saved+1e-9)return toast('Você não pode retirar mais do que o valor guardado.',1);
@@ -808,10 +809,10 @@ function donut(list){if(!list.length)return'<p class="muted">Sem dados neste per
 function sheetDebts(r){const items=[],gs=[],noDl=[];let late=0;
  for(const sh of S.sheets){if(sh.kind==='grid'||!sh.columns)continue;
   const f=n=>sFind(sh,n),cp=f('Valor da parcela'),cr=f('Parcelas restantes'),cn=f('Próximo vencimento'),cs=f('Situação'),cc=f('Credor'),ca=f('Valor alvo'),cf=f('Falta'),cv=f('Valor atual'),cz=f('Prazo'),cm=f('Meta');
-  if(!((cp&&cr)||(ca&&cz)))continue;const ev=SH.evalSheet(sh,sh.rows);
+  if(!(cp&&cr))continue;const ev=SH.evalSheet(sh,sh.rows);
   for(const w of sh.rows){const e=ev.get(w.id)||{};
    if(cp&&cr){const rest=+e[cr.id]||0,par=+e[cp.id]||0,nx=isoD(cn&&e[cn.id]);if(rest<=0||par<=0||(cs&&sNk(e[cs.id])==='quitado'))continue;
-    if(nx&&nx<r.from)late+=par;else if(!nx||inRd(nx,r))items.push({d:nx||r.from,t:'Parcela — '+String((cc&&e[cc.id])||sh.name),v:r2(par),s:sh.name})}
+    if(nx&&nx<r.from)late+=par;else if(!nx||inRd(nx,r))items.push({debt:true,d:nx||r.from,t:'Parcela — '+String((cc&&e[cc.id])||sh.name),v:r2(par),s:sh.name})}
    else{const falta=+((cf&&e[cf.id])??Math.max(0,(+e[ca.id]||0)-(+(cv&&e[cv.id])||0)))||0,nm=String((cm&&e[cm.id])||sh.name);if(falta<=0)continue;
     const pz=isoD(e[cz.id]);if(!pz){noDl.push(nm);continue}const d=gDays(pz),need=r2(d<0?falta:falta/Math.max(1,Math.ceil(d/30.44)));gs.push({n:nm+' (planilha)',s:sh.name,need,dep:0,go:need,late:d<0,dl:pz})}}}
  return{items,gs,noDl,late:r2(late)}}
@@ -823,34 +824,35 @@ function monthPlan(){
  pend=t=>[...mv.filter(m=>m.type===t&&m.status==='pending'&&!EXC(m)&&inR(m,r)).map(m=>({d:m.date,t:m.description||m.category,v:m.amount,s:'Conta'})),...SF.filter(x=>x.type===t&&!x.done&&x.due&&inRd(x.due,r)).map(x=>({d:x.due,t:x.t,v:x.v,s:x.src}))].sort((x,y)=>x.d.localeCompare(y.d)),
  DB=sheetDebts(r),pOut=[...pend('out'),...DB.items].sort((x,y)=>x.d.localeCompare(y.d)),pIn=pend('in'),
  late=r2(mv.filter(m=>m.type==='out'&&m.status==='pending'&&!EXC(m)&&m.date<r.from).reduce((q,m)=>q+m.amount,0)+SF.filter(x=>x.type==='out'&&!x.done&&x.due&&x.due<r.from).reduce((q,x)=>q+x.v,0)+DB.late),
- gl=[],noDl=[];
+ gl=[],noDl=[],fut=[];
  for(const g of S.goals||[]){
+  if(g.kind!=='divida'){if(g.saved<g.target)fut.push(g.name);continue}
   const net=r2((g.moves||[]).filter(x=>String(x.at).slice(0,7)===ym&&x.note!=='Saldo inicial').reduce((q,x)=>q+x.amount,0)),rem0=Math.max(0,g.target-(g.saved-net));
   if(rem0<=0)continue;if(!g.deadline){if(g.saved<g.target)noDl.push(g.name);continue}
   const d=gDays(g.deadline),need=r2(d<0?rem0:rem0/Math.max(1,Math.ceil(d/30.44))),dep=Math.max(0,Math.min(net,need));
-  gl.push({n:g.name,need,dep,go:r2(need-dep),late:d<0,dl:g.deadline})}
+  gl.push({n:g.name,k:'divida',need,dep,go:r2(need-dep),late:d<0,dl:g.deadline})}
  gl.push(...DB.gs);noDl.push(...DB.noDl);
- const exp=r2(paid+pOut.reduce((q,x)=>q+x.v,0)),goal=r2(gl.reduce((q,x)=>q+x.need,0)),inA=r2(pIn.reduce((q,x)=>q+x.v,0)),
- total=r2(exp+goal),falta=Math.max(0,r2(total-got)),faltaMin=Math.max(0,r2(exp-got)),faltaAll=Math.max(0,r2(falta-inA));
+ const exp=r2(paid+pOut.filter(x=>!x.debt).reduce((q,x)=>q+x.v,0)),inst=r2(DB.items.reduce((q,x)=>q+x.v,0)),goal=r2(gl.reduce((q,x)=>q+x.need,0)),debt=r2(inst+goal),inA=r2(pIn.reduce((q,x)=>q+x.v,0)),
+ total=r2(exp+debt),falta=Math.max(0,r2(total-got)),faltaAll=Math.max(0,r2(falta-inA));
  const bs={};dn('out').forEach(x=>{bs[x.src]=r2((bs[x.src]||0)+x.v)});pOut.forEach(x=>{if(x.s!=='Conta')bs[x.s]=r2((bs[x.s]||0)+x.v)});
- const sheets=S.sheets.map(sh=>({n:sh.name,v:r2((bs[sh.name]||0)+gl.filter(g=>g.s===sh.name).reduce((q,g)=>q+g.need,0)),grid:sh.kind==='grid'||!sh.columns}));
- return{sheets,td,ym,left,dd,ld,paid,got,pOut,pIn,late,gl,noDl,exp,goal,inA,total,falta,faltaMin,faltaAll,perDay:falta/left,perDayMin:faltaMin/left,perDayAll:faltaAll/left,avg:got/Math.max(1,dd)}}
+ const sheets=S.sheets.map(sh=>({n:sh.name,v:r2((bs[sh.name]||0)+gl.filter(g=>g.s===sh.name).reduce((q,g)=>q+g.need,0)),grid:sh.kind==='grid'||!sh.columns,fut:!!(sh.columns&&sFind(sh,'Valor alvo'))}));
+ return{sheets,td,ym,left,dd,ld,paid,got,pOut,pIn,late,gl,noDl,exp,inst,goal,debt,fut,inA,total,falta,faltaAll,perDay:falta/left,perDayAll:faltaAll/left,avg:got/Math.max(1,dd)}}
 function monthPlanCard(){try{
  const P=monthPlan(),mes=new Date(P.td+'T00:00').toLocaleDateString('pt-BR',{month:'long',year:'numeric'}),pct=P.total>0?Math.min(100,P.got/P.total*100):100,ok=P.falta<=0&&P.total>0;
  const row=(l,v,x='')=>`<tr><td>${l}</td><td style="text-align:right;white-space:nowrap" class="${x}">${v}</td></tr>`;
- return `<div class="card" style="border-top:4px solid var(--p);margin-bottom:14px"><div class="row"><div><h3 style="margin:0">🎯 Meta do mês — ${esc(mes)}</h3><small class="muted">Só deste mês: despesas (contas, cartão, planilhas) + metas e dívidas. Atualiza sozinho.</small></div><div style="text-align:right"><small class="muted">${P.left===1?'Último dia':'Faltam '+P.left+' dias'}</small></div></div>
- ${P.total<=0?'<p class="muted">Ainda não há despesas nem metas com prazo neste mês para calcular.</p>':`
- <div class="grid" style="margin-top:12px">${kpi('Falta ganhar no mês',ok?'Meta batida 🎉':money(P.falta),ok?'pos':'neg')}${kpi('Por dia (hoje até o fim do mês)',ok?money(0):money(P.perDay),ok?'pos':'')}${kpi('Mínimo (só despesas)',P.faltaMin>0?money(P.faltaMin)+' · '+money(P.perDayMin)+'/dia':'Despesas cobertas ✅')}${kpi('Recebido no mês',money(P.got))}</div>
- <div class="gbar" style="margin:12px 0 4px"><i style="width:${pct}%;background:${ok?'var(--g)':'var(--p)'}"></i></div><small class="muted">${Math.round(pct)}% do necessário (${money(P.got)} de ${money(P.total)})</small>
+ return `<div class="card" style="border-top:4px solid var(--p);margin-bottom:14px"><div class="row"><div><h3 style="margin:0">🎯 Meta do mês — ${esc(mes)}</h3><small class="muted">Só deste mês: despesas (contas, cartão, planilhas) + dívidas. Metas de futuro não entram. Atualiza sozinho.</small></div><div style="text-align:right"><small class="muted">${P.left===1?'Último dia':'Faltam '+P.left+' dias'}</small></div></div>
+ ${P.total<=0?'<p class="muted">Ainda não há despesas nem dívidas neste mês para calcular.</p>':`
+ <div class="grid" style="margin-top:12px">${kpi('Falta ganhar no mês',ok?'Meta batida 🎉':money(P.falta),ok?'pos':'neg')}${kpi('Por dia (hoje até o fim do mês)',ok?money(0):money(P.perDay),ok?'pos':'')}${kpi('Despesas + dívidas do mês',money(P.total))}${kpi('Recebido no mês',money(P.got))}</div>
+ <div class="gbar" style="margin:12px 0 4px"><i style="width:${pct}%;background:${ok?'var(--g)':'var(--p)'}"></i></div><small class="muted">${Math.round(pct)}% do necessário (${money(P.got)} de ${money(P.total)}) · Despesas ${money(P.exp)} · Dívidas ${money(P.debt)}</small>
  <p class="muted" style="margin:10px 0">Você recebeu em média ≈ ${money(P.avg)}/dia até agora${P.falta>0?`; para fechar precisa de ≈ ${money(P.perDay)}/dia nos próximos ${P.left} dia(s).`:'.'}${P.inA>0&&P.falta>0?`<br>Já tem ${money(P.inA)} a receber lançado: se entrar tudo, faltam ${money(P.faltaAll)} (≈ ${money(P.perDayAll)}/dia).`:''}</p>
  ${P.late>0?`<p class="neg" style="margin:6px 0">⚠️ Há ${money(P.late)} em despesas atrasadas de meses anteriores, que não entram nesta conta.</p>`:''}
  <details><summary class="muted" style="cursor:pointer">Ver como o cálculo foi feito</summary><div class="wrap" style="margin-top:8px"><table>
- ${row('Despesas já pagas no mês',money(P.paid))}${row('Despesas a pagar neste mês ('+P.pOut.length+')',money(r2(P.exp-P.paid)))}${row('<b>Total de despesas</b>','<b>'+money(P.exp)+'</b>')}
- ${P.gl.map(g=>row(esc(g.n)+(g.late?' <small class="neg">(prazo vencido)</small>':'')+'<br><small class="muted">aporte do mês'+(g.dep>0?' · já depositado '+money(g.dep):'')+'</small>',money(g.need))).join('')}${row('<b>Total de metas e dívidas</b>','<b>'+money(P.goal)+'</b>')}
- ${row('<b>Total do mês (despesas + metas)</b>','<b>'+money(P.total)+'</b>')}${row('Recebido no mês','− '+money(P.got),'pos')}${row('<b>Falta ganhar</b>','<b>'+money(P.falta)+'</b>')}</table></div>
- ${P.sheets.length?`<p style="margin:10px 0 4px"><b>Despesas por planilha (este mês)</b></p><div class="wrap"><table>${P.sheets.map(x=>row(esc(x.n),x.grid?'<small class="muted">planilha livre (grade): não é lida</small>':x.v>0?money(x.v):'<small class="muted">nenhuma despesa neste mês</small>')).join('')}</table></div><small class="muted">Se uma planilha aparece zerada, confira se ela tem coluna de Data (ou Vencimento) com datas deste mês e uma coluna Valor ou Total.</small>`:''}
+ ${row('Despesas já pagas no mês',money(P.paid))}${row('Despesas a pagar neste mês ('+P.pOut.filter(x=>!x.debt).length+')',money(r2(P.exp-P.paid)))}${row('<b>Total de despesas</b>','<b>'+money(P.exp)+'</b>')}
+ ${P.inst>0?row('Parcelas de dívidas e empréstimos (planilhas)',money(P.inst)):''}${P.gl.map(g=>row('💳 '+esc(g.n)+(g.late?' <small class="neg">(prazo vencido)</small>':'')+'<br><small class="muted">parcela do mês'+(g.dep>0?' · já depositado '+money(g.dep):'')+'</small>',money(g.need))).join('')}${row('<b>Total de dívidas</b>','<b>'+money(P.debt)+'</b>')}
+ ${row('<b>Total do mês (despesas + dívidas)</b>','<b>'+money(P.total)+'</b>')}${row('Recebido no mês','− '+money(P.got),'pos')}${row('<b>Falta ganhar</b>','<b>'+money(P.falta)+'</b>')}</table></div>
+ ${P.sheets.length?`<p style="margin:10px 0 4px"><b>Despesas por planilha (este mês)</b></p><div class="wrap"><table>${P.sheets.map(x=>row(esc(x.n),x.grid?'<small class="muted">planilha livre (grade): não é lida</small>':x.fut?'<small class="muted">meta de futuro: não conta</small>':x.v>0?money(x.v):'<small class="muted">nenhuma despesa neste mês</small>')).join('')}</table></div><small class="muted">Se uma planilha aparece zerada, confira se ela tem coluna de Data (ou Vencimento) com datas deste mês e uma coluna Valor ou Total.</small>`:''}
  ${P.pOut.length?`<p style="margin:10px 0 4px"><b>A pagar neste mês</b></p><div class="wrap"><table>${P.pOut.slice(0,12).map(x=>`<tr><td>${dt(x.d)}</td><td>${esc(x.t)}<br><small class="muted">${esc(x.s)}</small></td><td style="text-align:right">${money(x.v)}</td></tr>`).join('')}</table></div>${P.pOut.length>12?`<small class="muted">e mais ${P.pOut.length-12} item(ns).</small>`:''}`:''}
- ${P.noDl.length?`<p class="muted" style="margin:10px 0 0"><small>Metas sem prazo não entram na conta: ${P.noDl.map(esc).join(', ')}. Defina um prazo para incluí-las.</small></p>`:''}</details>`}</div>`}catch(e){console.error(e);return ''}}
+ ${P.noDl.length?`<p class="muted" style="margin:10px 0 0"><small>Dívidas sem prazo não entram na conta: ${P.noDl.map(esc).join(', ')}. Defina um prazo para incluí-las.</small></p>`:''}${P.fut.length?`<p class="muted" style="margin:8px 0 0"><small>🌱 Metas de futuro (não contam neste cálculo): ${P.fut.map(esc).join(', ')}.</small></p>`:''}</details>`}</div>`}catch(e){console.error(e);return ''}}
 function summaryPage(){view.months??=6;view.acc??='';view.src??='all';const{A,H,Q,act,sel,mv,r,t,tot,tp,O,SF,by,cOut,pmOut,cIn,cOutP}=sumData(),D=Dall(sel),td=F.today(),nd=r.from&&r.to?dayN(r.from,r.to):0,el=nd?Math.max(1,Math.min(nd,dayN(r.from,td))):0,
  vr=(a,b,inv)=>{const p=tp?pctc(a,b):null;return p?`<small class="${(inv?p>0:p<0)?'neg':'pos'}"> ${p>0?'▲':'▼'} ${Math.abs(p)}% vs. período anterior</small>`:''};
  if(!act.length&&!(S.quick||[]).length&&!S.sheets.some(s=>s.kind!=='grid'))return `<h1>📈 Resumo financeiro</h1><div class="card" style="text-align:center;padding:32px"><div style="font-size:42px">🏦</div><h3>Nada para resumir ainda</h3><p class="muted">Cadastre uma conta em Bancos e Contas ou crie uma planilha financeira. O resumo se monta sozinho a partir de tudo isso.</p><button class="pri" data-act="nav">Ir para Bancos e Contas</button></div>`;
